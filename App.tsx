@@ -146,7 +146,10 @@ const App: React.FC = () => {
           <div className="bg-indigo-600 w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg">
             <i className="fa-solid fa-file-invoice-dollar text-lg"></i>
           </div>
-          <h1 className="text-xl font-black uppercase tracking-tighter">FINEXTRACT <span className="text-indigo-500">PRO</span></h1>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tighter">CMI <span className="text-indigo-500">EXTRATOR</span></h1>
+            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest -mt-1">BY MAISSINE MOHAMMED</p>
+          </div>
         </div>
         {result && (
           <div className="flex items-center space-x-4">
@@ -168,7 +171,7 @@ const App: React.FC = () => {
                 <i className={`fa-solid ${isProcessing ? 'fa-spinner fa-spin' : 'fa-upload'}`}></i>
               </div>
               <h2 className="text-4xl font-black text-white uppercase tracking-tight">{fileName || "Charger un Document PDF"}</h2>
-              <p className="text-sm text-slate-500 mt-4 font-bold uppercase tracking-[0.2em]">Extraction par Facture : Date, Remise, Commission, TVA, Net</p>
+              <p className="text-sm text-slate-500 mt-4 font-bold uppercase tracking-[0.2em]">CMI EXTRATOR : MADE BY MAISSINE MOHAMMED</p>
               
               {isProcessing && progress && (
                 <div className="mt-16 max-w-md mx-auto space-y-6">
@@ -250,6 +253,9 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      <footer className="mt-20 border-t border-white/5 py-10 text-center">
+         <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.5em]">CMI EXTRATOR — MADE WITH PRECISION BY MAISSINE MOHAMMED</p>
+      </footer>
     </div>
   );
 };
