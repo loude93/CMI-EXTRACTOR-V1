@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="description" content="CMI EXTRATOR - Outil professionnel d'extraction de données financières par Maissine Mohammed.">
+    <link rel="manifest" href="manifest.json">
     <title>CMI EXTRATOR - MAISSINE MOHAMMED</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -11,13 +14,25 @@
     <!-- Load pdf-lib for splitting large files -->
     <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        @media print { .no-print { display: none; } }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; }
+        
+        @media print { 
+            .no-print { display: none !important; } 
+            body { background: white !important; color: black !important; }
+            .print-only { display: block !important; }
+            .bg-slate-900, .bg-slate-950 { background: white !important; border: 1px solid #eee !important; }
+            .text-white { color: black !important; }
+            .text-slate-400, .text-slate-500 { color: #666 !important; }
+            table { width: 100% !important; border-collapse: collapse !important; }
+            th, td { border: 1px solid #eee !important; padding: 8px !important; color: black !important; }
+            .shadow-2xl, .shadow-lg { shadow: none !important; }
+        }
+
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
         
         @keyframes progress {
           0% { background-position: 0% 50%; }

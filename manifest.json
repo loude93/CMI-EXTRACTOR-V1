@@ -1,0 +1,17 @@
+
+{
+  "name": "CMI EXTRATOR - MAISSINE MOHAMMED",
+  "short_name": "CMI Extrator",
+  "description": "Extracteur intelligent de factures et transactions CMI par Maissine Mohammed.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3135/3135706.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
