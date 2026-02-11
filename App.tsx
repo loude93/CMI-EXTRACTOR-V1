@@ -8,6 +8,23 @@ import * as XLSX from 'https://esm.sh/xlsx';
 
 declare const PDFLib: any;
 
+type ProcessingProfile = {
+  chunkSize: number;
+  concurrency: number;
+};
+
+const getProcessingProfile = (pageCount: number): ProcessingProfile => {
+  if (pageCount > 500) {
+    return { chunkSize: 10, concurrency: 2 };
+  }
+
+  if (pageCount > 250) {
+    return { chunkSize: 15, concurrency: 3 };
+  }
+
+  return { chunkSize: 25, concurrency: 6 };
+};
+
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     // Load from local storage for "Local PC" feel
@@ -92,25 +109,28 @@ const App: React.FC = () => {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
       const pageCount = pdfDoc.getPageCount();
-      
-      const CHUNK_SIZE = 25; 
-      const CONCURRENCY = 6; 
-      const totalChunks = Math.ceil(pageCount / CHUNK_SIZE);
+
+      const { chunkSize, concurrency } = getProcessingProfile(pageCount);
+      const totalChunks = Math.ceil(pageCount / chunkSize);
       
       setState(s => ({ ...s, progress: { current: 0, total: totalChunks } }));
       addLog(`Moteur Turbo prêt pour ${pageCount} pages.`);
+
+      if (pageCount > 500) {
+        addLog(`Mode grand volume activé (${chunkSize} pages/chunk, concurrence ${concurrency}).`);
+      }
 
       let allTransactions: Transaction[] = [];
       let allBatches: BatchSummary[] = [];
       
       let completedChunks = 0;
 
-      for (let i = 0; i < totalChunks; i += CONCURRENCY) {
+      for (let i = 0; i < totalChunks; i += concurrency) {
         const batchPromises = [];
-        for (let j = 0; j < CONCURRENCY && (i + j) < totalChunks; j++) {
+        for (let j = 0; j < concurrency && (i + j) < totalChunks; j++) {
           const chunkIdx = i + j;
-          const start = chunkIdx * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, pageCount);
+          const start = chunkIdx * chunkSize;
+          const end = Math.min(start + chunkSize, pageCount);
           
           const task = (async () => {
             const newPdf = await PDFLib.PDFDocument.create();
@@ -131,6 +151,8 @@ const App: React.FC = () => {
           allTransactions = [...allTransactions, ...res.transactions];
           allBatches = [...allBatches, ...res.batches];
         });
+
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       const mergedResult: ExtractionResult = {
@@ -148,7 +170,7 @@ const App: React.FC = () => {
 
       setState(prev => ({ ...prev, result: mergedResult, isProcessing: false, progress: null }));
     } catch (err: any) {
-      setState(prev => ({ ...prev, error: "Erreur lors de l'extraction locale. Vérifiez votre connexion.", isProcessing: false, progress: null }));
+      setState(prev => ({ ...prev, error: "Erreur lors de l'extraction locale du PDF. Vérifiez que le fichier contient du texte exploitable.", isProcessing: false, progress: null }));
     }
   };
 

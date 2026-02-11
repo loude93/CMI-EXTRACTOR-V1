@@ -1,120 +1,142 @@
+import * as pdfjsLib from "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
+import { ExtractionResult, BatchSummary, Transaction } from "../types";
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { ExtractionResult } from "../types";
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.worker.min.mjs";
 
-const API_KEY = process.env.API_KEY || "";
+const parseNumber = (value: string | undefined): number => {
+  if (!value) return 0;
+  const normalized = value.replace(/\s/g, "").replace(/\./g, "").replace(/,/g, ".");
+  const result = Number.parseFloat(normalized);
+  return Number.isFinite(result) ? result : 0;
+};
 
-export const extractFinancialDataChunk = async (base64Pdf: string, retryCount = 0): Promise<ExtractionResult> => {
-  const aiModel = "gemini-3-flash-preview";
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+const normalizeDate = (value: string): string => value.replace(/-/g, "/");
 
-  const systemInstruction = `
-    Rôle : Expert Comptable Haute Précision.
-    MISSION : EXTRAIRE CHAQUE FACTURE ET CHAQUE TRANSACTION.
-    
-    POUR CHAQUE FACTURE (REMISE) DÉTECTÉE, VOUS DEVEZ EXTRAIRE :
-    1. DATE DE LA FACTURE (Format JJ/MM/AAAA)
-    2. N° DE FACTURE
-    3. TOTAL REMISE (DH)
-    4. TOTAL COMMISSIONS HT
-    5. TOTAL TVA SUR COMMISSIONS
-    6. SOLDE NET REMISE
-    
-    POUR CHAQUE TRANSACTION :
-    1. DATE
-    2. LIBELLE
-    3. DEBIT
-    4. CREDIT
-    
-    IMPORTANT : Ne manquez aucune facture. Si une page contient un résumé de remise, extrayez impérativement la DATE et les 4 montants.
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: aiModel,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: "application/pdf", data: base64Pdf } },
-          { text: "EXTRAYEZ TOUTES LES FACTURES INDIVIDUELLEMENT AVEC LEURS DATES ET MONANTS, AINSI QUE TOUTES LES TRANSACTIONS." }
-        ],
-      },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        maxOutputTokens: 65000,
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            f: { 
-              type: Type.ARRAY, 
-              description: "Liste des factures individuelles",
-              items: { 
-                type: Type.OBJECT, 
-                properties: { 
-                  dt: { type: Type.STRING, description: "Date de la Facture" },
-                  id: { type: Type.STRING, description: "N° Facture" },
-                  r: { type: Type.NUMBER, description: "TOTAL REMISE (DH)" },
-                  c: { type: Type.NUMBER, description: "TOTAL COMMISSIONS HT" },
-                  v: { type: Type.NUMBER, description: "TOTAL TVA SUR COMMISSIONS" },
-                  n: { type: Type.NUMBER, description: "SOLDE NET REMISE" }
-                },
-                required: ["dt", "id", "r", "c", "v", "n"]
-              } 
-            },
-            t: { 
-              type: Type.ARRAY, 
-              items: { 
-                type: Type.OBJECT, 
-                properties: { 
-                  d: { type: Type.STRING }, 
-                  l: { type: Type.STRING }, 
-                  db: { type: Type.NUMBER, nullable: true }, 
-                  cr: { type: Type.NUMBER, nullable: true } 
-                } 
-              } 
-            }
-          },
-          required: ["f", "t"]
-        }
-      }
-    });
-
-    const raw = JSON.parse(response.text.replace(/```json/g, "").replace(/```/g, "").trim());
-
-    const batches = (raw.f || []).map((i: any) => ({ 
-      date: i.dt || "",
-      factureNumber: i.id || "", 
-      totalRemiseDH: i.r || 0, 
-      totalCommissionsHT: i.c || 0, 
-      totalTVASurCommissions: i.v || 0, 
-      soldeNetRemise: i.n || 0 
-    }));
-
-    const transactions = (raw.t || []).map((i: any) => ({ 
-      date: i.d || "", 
-      libelle: i.l || "", 
-      debit: i.db || null, 
-      credit: i.cr || null, 
-      solde: null 
-    }));
-
-    return {
-      batches,
-      transactions,
-      summary: { 
-        totalRemiseDH: batches.reduce((acc: number, b: any) => acc + b.totalRemiseDH, 0),
-        totalCommissionsHT: batches.reduce((acc: number, b: any) => acc + b.totalCommissionsHT, 0),
-        totalTVASurCommissions: batches.reduce((acc: number, b: any) => acc + b.totalTVASurCommissions, 0),
-        soldeNetRemise: batches.reduce((acc: number, b: any) => acc + b.soldeNetRemise, 0),
-        soldeGlobal: 0 
-      },
-      currency: "DH"
-    };
-  } catch (error) {
-    if (retryCount < 1) {
-      await new Promise(r => setTimeout(r, 1000));
-      return extractFinancialDataChunk(base64Pdf, retryCount + 1);
-    }
-    throw error;
+const extractLines = async (base64Pdf: string): Promise<string[]> => {
+  const binary = atob(base64Pdf);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
+
+  const pdf = await (pdfjsLib as any).getDocument({ data: bytes }).promise;
+  const lines: string[] = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageItems = content.items as Array<{ str?: string }>;
+
+    let currentLine = "";
+    for (const item of pageItems) {
+      const token = (item.str || "").trim();
+      if (!token) continue;
+
+      if (currentLine.length > 0) {
+        currentLine += ` ${token}`;
+      } else {
+        currentLine = token;
+      }
+
+      if (/\d{2}[/-]\d{2}[/-]\d{4}/.test(token) || token.endsWith(":")) {
+        lines.push(currentLine);
+        currentLine = "";
+      }
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+
+  return lines.map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+};
+
+const parseInvoices = (lines: string[]): BatchSummary[] => {
+  const invoices: BatchSummary[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!/facture|remise/i.test(line)) continue;
+
+    const dateMatch = line.match(/\b\d{2}[/-]\d{2}[/-]\d{4}\b/);
+    const invoiceIdMatch = line.match(/(?:facture|n[°o]?\s*facture)\s*[:#-]?\s*([A-Z0-9\-/]+)/i);
+
+    let totalRemiseDH = 0;
+    let totalCommissionsHT = 0;
+    let totalTVASurCommissions = 0;
+    let soldeNetRemise = 0;
+
+    for (let j = i; j < Math.min(i + 8, lines.length); j++) {
+      const scope = lines[j];
+      const amountMatch = scope.match(/(-?[\d\s.,]+)$/);
+      const amount = parseNumber(amountMatch?.[1]);
+
+      if (/total\s*remise/i.test(scope)) totalRemiseDH = amount;
+      if (/commission/i.test(scope) && /ht/i.test(scope)) totalCommissionsHT = amount;
+      if (/tva/i.test(scope)) totalTVASurCommissions = amount;
+      if (/solde\s*net/i.test(scope)) soldeNetRemise = amount;
+    }
+
+    if (totalRemiseDH || totalCommissionsHT || totalTVASurCommissions || soldeNetRemise) {
+      invoices.push({
+        date: dateMatch ? normalizeDate(dateMatch[0]) : "",
+        factureNumber: invoiceIdMatch?.[1] || "",
+        totalRemiseDH,
+        totalCommissionsHT,
+        totalTVASurCommissions,
+        soldeNetRemise,
+      });
+    }
+  }
+
+  return invoices;
+};
+
+const parseTransactions = (lines: string[]): Transaction[] => {
+  const transactions: Transaction[] = [];
+
+  for (const line of lines) {
+    const txMatch = line.match(
+      /^(\d{2}[/-]\d{2}[/-]\d{4})\s+(.+?)\s+(-?[\d\s.,]+)?\s+(-?[\d\s.,]+)?$/,
+    );
+
+    if (!txMatch) continue;
+
+    const [, date, libelle, debitRaw, creditRaw] = txMatch;
+    const debit = debitRaw ? parseNumber(debitRaw) : null;
+    const credit = creditRaw ? parseNumber(creditRaw) : null;
+
+    if (!libelle || (!debit && !credit)) continue;
+
+    transactions.push({
+      date: normalizeDate(date),
+      libelle,
+      debit,
+      credit,
+      solde: null,
+    });
+  }
+
+  return transactions;
+};
+
+export const extractFinancialDataChunk = async (base64Pdf: string): Promise<ExtractionResult> => {
+  const lines = await extractLines(base64Pdf);
+
+  const batches = parseInvoices(lines);
+  const transactions = parseTransactions(lines);
+
+  return {
+    batches,
+    transactions,
+    summary: {
+      totalRemiseDH: batches.reduce((acc, b) => acc + b.totalRemiseDH, 0),
+      totalCommissionsHT: batches.reduce((acc, b) => acc + b.totalCommissionsHT, 0),
+      totalTVASurCommissions: batches.reduce((acc, b) => acc + b.totalTVASurCommissions, 0),
+      soldeNetRemise: batches.reduce((acc, b) => acc + b.soldeNetRemise, 0),
+      soldeGlobal: 0,
+    },
+    currency: "DH",
+  };
 };
